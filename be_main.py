@@ -1,6 +1,7 @@
 # backend/main.py
 import os
 import pickle
+import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -55,6 +56,27 @@ def get_server_info(server: str):
     with open(p, "rb") as f:
         info = pickle.load(f)
     return JSONResponse(content=info)
+
+@app.get("/api/server/plot/{server}")
+def api_server_plot(server: str):
+    """
+    Returns combined historical + predicted data for plotting.
+    """
+    csv_path = DATA_DIR / f"{server}_predicted.csv"
+    if not csv_path.exists():
+        raise HTTPException(status_code=404, detail=f"{csv_path.name} not found")
+
+    df = pd.read_csv(csv_path)
+    # Expect columns: timestamp, cpu_pred, mem_pred, cpu_actual, mem_actual ...
+    # Ensure timestamps are sorted and serializable
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df = df.sort_values("timestamp")
+
+    # convert to JSON rows for frontend plotting
+    return JSONResponse(
+        content=df.to_dict(orient="records")
+    )
+
 
 def __load_json(path):
     import json
