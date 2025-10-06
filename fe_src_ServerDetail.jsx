@@ -4,7 +4,7 @@ import Plot from "react-plotly.js";
 
 export default function ServerDetail() {
   const { serverName } = useParams();
-  const [predicted, setPredicted] = useState(null);
+  const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -16,32 +16,38 @@ export default function ServerDetail() {
         if (!resp.ok) throw new Error(`CSV fetch failed (${resp.status})`);
         const text = await resp.text();
 
-        // ✅ Correct newline split
         const rows = text.trim().split("\n");
         if (rows.length < 2) throw new Error("CSV is empty");
 
-        const headers = rows[0].split(",").map(h => h.trim());
+        const headers = rows[0].split(",").map((h) => h.trim());
         const idxTimestamp = headers.indexOf("timestamp");
-        const idxCpu = headers.findIndex(h => h.toLowerCase().includes("cpu_pred_combined"));
-        const idxMem = headers.findIndex(h => h.toLowerCase().includes("mem_pred_combined"));
+        const idxCpuActual = headers.indexOf("cpu_actual");
+        const idxCpuPred = headers.indexOf("cpu_predicted");
+        const idxMemActual = headers.indexOf("mem_actual");
+        const idxMemPred = headers.indexOf("mem_predicted");
 
-        const df = rows.slice(1).map(r => {
+        const parsed = rows.slice(1).map((r) => {
           const cols = r.split(",");
           return {
             timestamp: cols[idxTimestamp],
-            cpu_pred_combined: parseFloat(cols[idxCpu]),
-            mem_pred_combined: parseFloat(cols[idxMem]),
+            cpu_actual: parseFloat(cols[idxCpuActual]),
+            cpu_predicted: parseFloat(cols[idxCpuPred]),
+            mem_actual: parseFloat(cols[idxMemActual]),
+            mem_predicted: parseFloat(cols[idxMemPred]),
           };
         });
 
-        // Filter out invalid numeric rows
-        const valid = df.filter(
-          d => !isNaN(d.cpu_pred_combined) && !isNaN(d.mem_pred_combined)
+        const valid = parsed.filter(
+          (d) =>
+            !isNaN(d.cpu_actual) &&
+            !isNaN(d.cpu_predicted) &&
+            !isNaN(d.mem_actual) &&
+            !isNaN(d.mem_predicted)
         );
 
-        setPredicted(valid);
+        setData(valid);
       } catch (e) {
-        console.error("Prediction fetch error:", e);
+        console.error("Data fetch error:", e);
         setError(e.message);
       }
     }
@@ -56,22 +62,24 @@ export default function ServerDetail() {
       </div>
     );
 
-  if (!predicted)
+  if (!data)
     return (
       <div style={{ padding: 20 }}>
-        Loading predictions... <br />
+        Loading data... <br />
         <Link to="/landing">Back</Link>
       </div>
     );
 
-  const times = predicted.map(r => r.timestamp);
-  const cpu = predicted.map(r => r.cpu_pred_combined);
-  const mem = predicted.map(r => r.mem_pred_combined);
+  const times = data.map((r) => r.timestamp);
+  const cpuActual = data.map((r) => r.cpu_actual);
+  const cpuPred = data.map((r) => r.cpu_predicted);
+  const memActual = data.map((r) => r.mem_actual);
+  const memPred = data.map((r) => r.mem_predicted);
 
-  if (!cpu.length && !mem.length)
+  if (!cpuActual.length)
     return (
       <div style={{ padding: 20 }}>
-        No data available for {serverName}.
+        No valid data for {serverName}.
         <div style={{ marginTop: 16 }}>
           <Link to="/landing">Back</Link>
         </div>
@@ -85,27 +93,45 @@ export default function ServerDetail() {
         data={[
           {
             x: times,
-            y: cpu,
+            y: cpuActual,
             type: "scatter",
             mode: "lines",
-            name: "CPU predicted",
-            line: { color: "orange" },
+            name: "CPU Actual",
+            line: { color: "blue", width: 2 },
           },
           {
             x: times,
-            y: mem,
+            y: cpuPred,
             type: "scatter",
             mode: "lines",
-            name: "Memory predicted",
-            line: { color: "teal" },
+            name: "CPU Predicted",
+            line: { color: "red", dash: "dashdot", width: 2 },
+          },
+          {
+            x: times,
+            y: memActual,
+            type: "scatter",
+            mode: "lines",
+            name: "Memory Actual",
+            line: { color: "green", width: 2 },
+          },
+          {
+            x: times,
+            y: memPred,
+            type: "scatter",
+            mode: "lines",
+            name: "Memory Predicted",
+            line: { color: "orange", dash: "dashdot", width: 2 },
           },
         ]}
         layout={{
           width: 1000,
-          height: 450,
-          title: `${serverName} - Predicted CPU & Memory`,
+          height: 500,
+          title: `${serverName} - CPU & Memory (Actual vs Predicted)`,
           xaxis: { title: "Timestamp" },
-          yaxis: { title: "Utilization (%)" },
+          yaxis: { title: "Utilization (%)", range: [0, 100] },
+          legend: { orientation: "h", y: -0.2 },
+          hovermode: "x unified",
         }}
       />
       <div style={{ marginTop: 16 }}>
