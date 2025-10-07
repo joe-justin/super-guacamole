@@ -1,4 +1,13 @@
 # model_pipeline_multi.py
+"""
+Enhanced pipeline with:
+ - multivariate GRU + optional TCN
+ - Huber loss for robustness to outliers
+ - volatility/lag features to help capture peaks
+ - RobustScaler for feature scaling
+ - stable iterative forecasting with clipping to prevent runaway values
+ - preserves all original outputs & filenames expected by UI
+"""
 import os
 import argparse
 import pickle
@@ -57,15 +66,19 @@ device = torch.device(args.device)
 # Models
 # -----------------------
 class MultiGRU(nn.Module):
-    def __init__(self, input_size=1, hidden_size=64, num_layers=2):
+    def __init__(self, input_size=1, hidden_size=64, num_layers=2, dropout=0.2):
         super().__init__()
-        self.gru = nn.GRU(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_size, 1)
+        self.gru = nn.GRU(input_size, hidden_size, num_layers, batch_first=True, dropout=dropout if num_layers>1 else 0.0)
+        self.fc = nn.Sequential(
+            nn.Linear(hidden_size, 32),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(32, 1)
+        )
     def forward(self, x):
         out, _ = self.gru(x)
         out = out[:, -1, :]
-        out = self.fc(out)
-        return out
+        return self.fc(out)
 
 class TCNBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, dilation):
@@ -74,11 +87,13 @@ class TCNBlock(nn.Module):
         self.conv = nn.Conv1d(in_channels, out_channels, kernel_size,
                               padding=padding, dilation=dilation)
         self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.1)
         self.downsample = (in_channels != out_channels) and nn.Conv1d(in_channels, out_channels, 1) or None
     def forward(self, x):
         out = self.conv(x)
         out = out[:, :, :x.size(2)]
         out = self.relu(out)
+        out = self.dropout(out)
         if self.downsample:
             x = self.downsample(x)
         return out + x
@@ -143,11 +158,22 @@ EXOG_FEATURES = [
 # -----------------------
 for server, group in tqdm(grouped, desc="Servers"):
     s = resample_server(group.copy())
+
+    # ensure exog columns exist
     for c in EXOG_FEATURES:
         if c not in s.columns:
             s[c] = 0.0
+
+    # add time + volatility features
     s["hour"] = s["timestamp"].dt.hour
     s["dayofweek"] = s["timestamp"].dt.dayofweek
+    for base in ("cpu_current", "mem_current"):
+        if base in s.columns:
+            s[f"{base}_diff"] = s[base].diff().fillna(0.0)
+            s[f"{base}_rolling_std"] = s[base].rolling(window=6, min_periods=1).std().fillna(0.0)
+        else:
+            s[f"{base}_diff"] = 0.0
+            s[f"{base}_rolling_std"] = 0.0
 
     meta = {"Function": s["Function"].iloc[0], "Application": s["Application"].iloc[0]}
     preds = {}
@@ -156,23 +182,22 @@ for server, group in tqdm(grouped, desc="Servers"):
 
     for metric in ("cpu_current", "mem_current"):
         if metric not in s.columns:
-            preds[metric] = {"gru": np.repeat(0.0, n_steps), "arima": np.repeat(0.0, n_steps), "combined": np.repeat(0.0, n_steps)}
+            preds[metric] = {"gru": np.repeat(np.nan, n_steps), "arima": np.repeat(np.nan, n_steps), "combined": np.repeat(np.nan, n_steps)}
             continue
 
-        series = s[metric].astype(float).values
-        if np.isnan(series).all():
-            series = np.zeros(1)
+        # build feature matrix including volatility/lag & time features
+        feature_cols = [metric] + EXOG_FEATURES + [f"{metric}_diff", f"{metric}_rolling_std", "hour", "dayofweek"]
+        X_full = s[feature_cols].fillna(0.0).astype(float).values
 
-        feature_cols = [metric] + EXOG_FEATURES + ["hour", "dayofweek"]
-        X_full = s[feature_cols].fillna(0.0).values.astype(float)
-
+        # scalers
         scaler_X = RobustScaler()
         try:
             X_scaled = scaler_X.fit_transform(X_full)
         except Exception:
-            X_scaled = X_full
+            X_scaled = X_full.copy()
 
         scaler_y = RobustScaler()
+        series = s[metric].astype(float).fillna(0.0).values
         try:
             y_scaled = scaler_y.fit_transform(series.reshape(-1,1)).flatten()
         except Exception:
@@ -192,8 +217,9 @@ for server, group in tqdm(grouped, desc="Servers"):
         input_size = X_scaled.shape[1]
         model_gru = MultiGRU(input_size=input_size, hidden_size=64, num_layers=2).to(device)
         opt = torch.optim.Adam(model_gru.parameters(), lr=args.gru_lr)
-        loss_fn = nn.MSELoss()
+        loss_fn = nn.HuberLoss(delta=1.0)
 
+        # train
         model_gru.train()
         for epoch in range(args.gru_epochs):
             opt.zero_grad()
@@ -202,6 +228,7 @@ for server, group in tqdm(grouped, desc="Servers"):
             loss.backward()
             opt.step()
 
+        # produce iterative forecast using last observed window (use scaler_X trained above)
         model_gru.eval()
         last_window = X_scaled[-seq_len:].copy()
         preds_gru_scaled = []
@@ -210,27 +237,41 @@ for server, group in tqdm(grouped, desc="Servers"):
             last_day = int(s["dayofweek"].iloc[-1])
             future_hour = (last_hour + step + 1) % 24
             future_day = (last_day + ((last_hour + step + 1)//24)) % 7
+
             feat = last_window[-1].copy()
+            # hour & dayofweek are last two columns by construction
             feat[-2] = future_hour
             feat[-1] = future_day
+
             try:
                 feat_scaled = scaler_X.transform(feat.reshape(1,-1)).reshape(-1)
             except Exception:
                 feat_scaled = feat
+
             seq_input = np.vstack([last_window[1:], feat_scaled]) if seq_len>1 else feat_scaled[None,:]
             inp = torch.tensor(seq_input[None,:,:], dtype=torch.float32).to(device)
             with torch.no_grad():
                 p = model_gru(inp).cpu().numpy().flatten()[0]
             preds_gru_scaled.append(float(p))
+
             last_window = np.vstack([last_window, feat_scaled])
             if len(last_window) > seq_len:
                 last_window = last_window[-seq_len:]
 
+        # inverse transform and clamp to plausible range
         try:
             preds_gru = scaler_y.inverse_transform(np.array(preds_gru_scaled).reshape(-1,1)).flatten()
         except Exception:
             preds_gru = np.array(preds_gru_scaled).astype(float)
 
+        # clamp using observed series range (protect against runaway)
+        series_min = np.nanmin(series) if len(series)>0 else 0.0
+        series_max = np.nanmax(series) if len(series)>0 else 1.0
+        lower = series_min - abs(series_min)*0.2 - 1e-6
+        upper = series_max + abs(series_max)*1.2 + 1e-6
+        preds_gru = np.clip(preds_gru, lower, upper)
+
+        # ARIMA fallback
         try:
             if len(series) >= 20:
                 arima = ARIMA(series, order=(5,1,0))
@@ -242,22 +283,8 @@ for server, group in tqdm(grouped, desc="Servers"):
         except Exception:
             preds_arima = np.repeat(series[-1], n_steps)
 
-        preds_combined = np.maximum(preds_gru, preds_arima)
-        preds[metric] = {"gru": preds_gru, "arima": preds_arima, "combined": preds_combined}
-
-        if metric == "cpu_current":
-            preds_df["cpu_predicted"] = preds_combined
-        else:
-            preds_df["mem_predicted"] = preds_combined
-
-        gru_models_store.setdefault(server, {})[metric] = {
-            "state_dict": model_gru.state_dict(),
-            "scaler_X": scaler_X,
-            "scaler_y": scaler_y,
-            "seq_len": seq_len,
-            "input_size": input_size
-        }
-
+        # optional TCN
+        preds_tcn = None
         if args.train_tcn:
             try:
                 tcn = SimpleTCN(input_size=input_size, channels=[32,32,64], kernel_size=3).to(device)
@@ -298,12 +325,7 @@ for server, group in tqdm(grouped, desc="Servers"):
                     preds_tcn = scaler_y.inverse_transform(np.array(preds_tcn_scaled).reshape(-1,1)).flatten()
                 except Exception:
                     preds_tcn = np.array(preds_tcn_scaled)
-                preds[metric]["tcn"] = preds_tcn
-                preds_combined = np.maximum(preds_combined, preds_tcn)
-                if metric == "cpu_current":
-                    preds_df["cpu_predicted"] = preds_combined
-                else:
-                    preds_df["mem_predicted"] = preds_combined
+                preds_tcn = np.clip(preds_tcn, lower, upper)
                 tcn_models_store.setdefault(server, {})[metric] = {
                     "state_dict": tcn.state_dict(),
                     "scaler_X": scaler_X,
@@ -312,13 +334,37 @@ for server, group in tqdm(grouped, desc="Servers"):
                     "input_size": input_size
                 }
             except Exception:
-                pass
+                preds_tcn = None
 
-    # Build final CSV
+        # combine predictions conservatively
+        candidates = [preds_gru, preds_arima]
+        if preds_tcn is not None:
+            candidates.append(preds_tcn)
+        preds_combined = np.nanmax(np.vstack(candidates), axis=0)
+
+        preds[metric] = {"gru": preds_gru, "arima": preds_arima, "tcn": preds_tcn, "combined": preds_combined}
+
+        # write to preds_df (ensure correct length)
+        if metric == "cpu_current":
+            preds_df["cpu_predicted"] = preds_combined
+        else:
+            preds_df["mem_predicted"] = preds_combined
+
+        # save model artifacts
+        gru_models_store.setdefault(server, {})[metric] = {
+            "state_dict": model_gru.state_dict(),
+            "scaler_X": scaler_X,
+            "scaler_y": scaler_y,
+            "seq_len": seq_len,
+            "input_size": input_size
+        }
+
+    # Build final CSV: historic actuals followed by predicted future rows
     hist_df = s[["timestamp", "cpu_current", "mem_current"]].copy().rename(columns={
         "cpu_current": "cpu_actual",
         "mem_current": "mem_actual"
     })
+
     future_df = pd.DataFrame({"timestamp": preds_df["timestamp"]})
     future_df["cpu_predicted"] = preds_df.get("cpu_predicted", np.repeat(np.nan, n_steps)).astype(float)
     future_df["mem_predicted"] = preds_df.get("mem_predicted", np.repeat(np.nan, n_steps)).astype(float)
@@ -332,8 +378,11 @@ for server, group in tqdm(grouped, desc="Servers"):
     csv_path = os.path.join(args.outdir, f"{server}_actual_predicted.csv")
     final_df.to_csv(csv_path, index=False)
 
-    avg_cpu = float(np.nanmean(preds.get("cpu_current", {}).get("combined", np.array([0.0]))))
-    avg_mem = float(np.nanmean(preds.get("mem_current", {}).get("combined", np.array([0.0]))))
+    avg_cpu = float(np.nanmean(preds.get("cpu_current", {}).get("combined", np.array([np.nan]))))
+    avg_mem = float(np.nanmean(preds.get("mem_current", {}).get("combined", np.array([np.nan]))))
+    avg_cpu = 0.0 if np.isnan(avg_cpu) else avg_cpu
+    avg_mem = 0.0 if np.isnan(avg_mem) else avg_mem
+
     worst_avg = max(avg_cpu, avg_mem)
     if worst_avg < 50:
         status = "healthy"
@@ -372,6 +421,9 @@ if args.train_tcn:
 with open(os.path.join(args.outdir, "ARIMA_Model.pkl"), "wb") as f:
     pickle.dump(arima_models_store, f)
 
+# -----------------------
+# Summaries & pickles for UI compatibility
+# -----------------------
 func_pct = {}
 for func, vals in function_summary.items():
     total = vals["total"] or 1
