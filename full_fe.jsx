@@ -346,6 +346,39 @@ body { background: white; }
 /* small utility to keep charts responsive */
 .plotly-graph-div { max-width: 100%; }
 
+
+====== api.jsx ======
+  // src/api.js
+// Centralized API helper — controls backend connection
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+
+export async function fetchAPI(path, options = {}) {
+  const url = `${API_BASE}${path}`;
+  const resp = await fetch(url, {
+    headers: { "Content-Type": "application/json" },
+    ...options,
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Fetch failed (${resp.status}): ${text}`);
+  }
+  try {
+    return await resp.json();
+  } catch {
+    return await resp.text(); // for CSV/text endpoints
+  }
+}
+
+// Example POST helper
+export async function postAPI(path, body) {
+  return fetchAPI(path, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+
 ==== FILE: assets/README.txt ====
 Place two images in public/assets/:
  - logo.png  (small logo shown top-left)
