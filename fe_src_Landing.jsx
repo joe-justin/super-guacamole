@@ -1,49 +1,23 @@
-import React, { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
-function Card({ title, color, subtitle, onClick }) {
-  return (
-    <div className={`flip-card ${color}`} onClick={onClick}>
-      <div className="flip-inner">
-        <div className="flip-front">
-          <div className="card-title">{title}</div>
-          <div className="card-sub">{subtitle}</div>
-        </div>
-        <div className="flip-back">
-          <div className="explore">Explore Applications</div>
-        </div>
-      </div>
-    </div>
-  )
-}
+import React from "react";
+import { useNavigate } from "react-router-dom";
 
 export default function Landing(){
-  const [items, setItems] = useState([])
-  const nav = useNavigate()
-  useEffect(()=>{
-    async function load(){
-      try {
-        const resp = await fetch('http://localhost:8000/api/functions')
-        const json = await resp.json()
-        // determine color by healthy_pct threshold of servers: >=95 green, 90-95 amber, <90 red
-        const mapped = json.map(f => {
-          const healthy = f.healthy_pct || 0
-          const color = healthy >= 95 ? 'green' : (healthy >= 90 ? 'amber' : 'red')
-          return { title: f.Function, color, subtitle: `${healthy}% healthy` }
-        })
-        setItems(mapped)
-      } catch(e) { setItems([]) }
-    }
-    load()
-  },[])
+  const nav = useNavigate();
   return (
-    <div className="landing-root">
-      <header><h1>Functions</h1></header>
-      <div className="cards-grid">
-        {items.map(it => (
-          <Card key={it.title} {...it} onClick={() => nav(`/applications/${encodeURIComponent(it.title)}`)} />
-        ))}
+    <div style={{display:"flex", gap:40}}>
+      <div style={{flex:1}}>
+        <h1>Welcome</h1>
+        <p>
+          This tool models any server to predict future machine metrics and provides AI insights.
+        </p>
+      </div>
+      <div style={{flex:1, display:"grid", gridTemplateColumns:"1fr 1fr", gap:20}}>
+        <button onClick={()=>nav("/functions")}>Business Stream</button>
+        <button onClick={()=>nav("/functions")}>Business Cluster</button>
+        <button onClick={()=>nav("/applications")}>Application</button>
+        <button onClick={()=>nav("/servers")}>Hostname</button>
       </div>
     </div>
-  )
+  );
 }
