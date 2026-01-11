@@ -1,29 +1,75 @@
-
 import React from "react";
-import { Link, Outlet, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
-export default function Layout() {
+export default function Layout({ children }) {
   const navigate = useNavigate();
+
+  const handleLogout = () => {
+    const confirmLogout = window.confirm("Confirm Logout?");
+    if (confirmLogout) {
+      // Clear session or auth tokens if any
+      localStorage.clear();
+      sessionStorage.clear();
+      navigate("/");
+    }
+  };
+
   return (
-    <div style={{display:"flex", minHeight:"100vh", background:"#fff"}}>
-      <aside style={{width:260, padding:20, borderRight:"1px solid #eee"}}>
-        <h2>
-          <span style={{color:"red"}}>S</span>ystem{" "}
-          <span style={{color:"red"}}>H</span>ealth{" "}
-          <span style={{color:"red"}}>D</span>ashboard
-        </h2>
-        <div style={{marginTop:8}}>powered by <span style={{color:"red"}}>ABC</span></div>
-        <p style={{marginTop:20, fontSize:14}}>
-          Predictive system health platform to model servers and look into the future using AI-driven insights.
-        </p>
-        <nav style={{marginTop:30, display:"flex", flexDirection:"column", gap:10}}>
-          <Link to="/landing">Home</Link>
-        </nav>
-        <button style={{marginTop:30}} onClick={()=>navigate("/")}>Logout</button>
-      </aside>
-      <main style={{flex:1, padding:24}}>
-        <Outlet/>
-      </main>
+    <div>
+      <header
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "10px 20px",
+          backgroundColor: "#f8f9fa",
+          borderBottom: "1px solid #ddd",
+        }}
+      >
+        <Link
+          to="/landing"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            textDecoration: "none",
+          }}
+        >
+          <img
+            src="/logo.png"
+            alt="Company Logo"
+            style={{ height: 40, marginRight: 12 }}
+          />
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <span style={{ fontSize: 22, fontWeight: 600, lineHeight: "26px" }}>
+              <span style={{ color: "red" }}>S</span>ystem{" "}
+              <span style={{ color: "red" }}>H</span>ealth{" "}
+              <span style={{ color: "red" }}>D</span>ashboard
+            </span>
+            <span style={{ marginTop: 6, fontSize: 13, color: "#555" }}>
+              powered by <span style={{ color: "red" }}>ABC</span>
+            </span>
+          </div>
+        </Link>
+
+        {/* ✅ Logout Button with confirmation */}
+        <button
+          onClick={handleLogout}
+          style={{
+            backgroundColor: "red",
+            color: "white",
+            border: "none",
+            padding: "8px 16px",
+            borderRadius: 6,
+            fontSize: 14,
+            cursor: "pointer",
+            fontWeight: "500",
+          }}
+        >
+          Logout
+        </button>
+      </header>
+
+      <main>{children}</main>
     </div>
   );
 }
