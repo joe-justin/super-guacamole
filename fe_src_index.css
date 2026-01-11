@@ -1,0 +1,22 @@
+:root{ --green:#10b981; --amber:#f59e0b; --red:#ef4444 }
+body{ font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin:0 }
+.center-vert{ display:flex; height:100vh; align-items:center; justify-content:center }
+.card{ width:320px; padding:24px; border-radius:12px; box-shadow:0 6px 20px rgba(2,6,23,0.08); background:#fff }
+input{ width:100%; padding:10px; margin:10px 0; border-radius:6px; border:1px solid #e5e7eb }
+button{ padding:10px 14px; border-radius:8px; border:0; background:#111827; color:#fff }
+.error{ color:#ef4444; margin-top:8px }
+.landing-root{ padding:24px }
+.cards-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:18px; margin-top:20px }
+.flip-card{ perspective: 1000px; cursor:pointer }
+.flip-inner{ position:relative; width:100%; height:140px; transform-style: preserve-3d; transition: transform 0.6s }
+.flip-card:hover .flip-inner{ transform: rotateY(180deg) }
+.flip-front, .flip-back{ position:absolute; width:100%; height:100%; backface-visibility: hidden; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-direction:column; color:#fff; font-weight:600 }
+.flip-front{ transform: rotateY(0deg); }
+.flip-back{ transform: rotateY(180deg); background: rgba(0,0,0,0.08); color:#111827 }
+.flip-card.green .flip-front{ background: linear-gradient(135deg, rgba(16,185,129,0.9), rgba(34,197,94,0.9)) }
+.flip-card.amber .flip-front{ background: linear-gradient(135deg, rgba(245,158,11,0.9), rgba(249,115,22,0.9)) }
+.flip-card.red .flip-front{ background: linear-gradient(135deg, rgba(239,68,68,0.9), rgba(220,38,38,0.9)) }
+.card-title{ font-size:10px }
+.card-sub{ font-size:12px }
+.card-pct{ font-size:12px; margin-top:8px }
+.flip-back .explore{ font-size:12px }
