@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import Layout from "./Layout.jsx";
 
 function Card({ title, color, subtitle, onClick }) {
   return (
@@ -36,11 +37,13 @@ export default function Servers(){
     load()
   },[application])
   return (
+    <Layout>
     <div style={{padding:20}}>
       <h2>Servers for {application}</h2>
       <div className="cards-grid">
         {servers.map(s => <Card key={s.title} {...s} onClick={() => nav(`/server/${encodeURIComponent(s.title)}`)} />)}
       </div>
     </div>
+    </Layout>
   )
 }
