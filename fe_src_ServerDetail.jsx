@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import Plot from "react-plotly.js";
+import Layout from "./layout.jsx";
 
 export default function ServerDetail() {
   const { serverName } = useParams();
@@ -37,17 +38,19 @@ export default function ServerDetail() {
           };
         });
 
-        const valid = parsed.filter(
-          (d) =>
-            !isNaN(d.cpu_actual) &&
-            !isNaN(d.cpu_predicted) &&
-            !isNaN(d.mem_actual) &&
-            !isNaN(d.mem_predicted)
-        );
+        const cleaned = parsed.map((d) => ({
+          timestamp: d.timestamp,
+          cpu_actual: isNaN(d.cpu_actual) ? null : d.cpu_actual,
+          cpu_predicted: isNaN(d.cpu_predicted) ? null : d.cpu_predicted,
+          mem_actual: isNaN(d.mem_actual) ? null : d.mem_actual,
+          mem_predicted: isNaN(d.mem_predicted) ? null : d.mem_predicted,
+          }))
 
+        const valid = cleaned.filter((d) => d.timestamp);
         setData(valid);
+
       } catch (e) {
-        console.error("Data fetch error:", e);
+        console.error(data fetch error:", e);
         setError(e.message);
       }
     }
@@ -56,18 +59,22 @@ export default function ServerDetail() {
 
   if (error)
     return (
+      <Layout>
       <div style={{ padding: 20, color: "red" }}>
         Error loading data: {error} <br />
         <Link to="/landing">Back</Link>
       </div>
+      </Layout>
     );
 
   if (!data)
     return (
+      <Layout>
       <div style={{ padding: 20 }}>
         Loading data... <br />
         <Link to="/landing">Back</Link>
       </div>
+      </Layout>
     );
 
   const times = data.map((r) => r.timestamp);
@@ -78,15 +85,18 @@ export default function ServerDetail() {
 
   if (!cpuActual.length)
     return (
+      <Layout>
       <div style={{ padding: 20 }}>
         No valid data for {serverName}.
         <div style={{ marginTop: 16 }}>
           <Link to="/landing">Back</Link>
         </div>
       </div>
+      </Layout>
     );
 
   return (
+    <Layout>
     <div style={{ padding: 20 }}>
       <h2>{serverName}</h2>
       <Plot
@@ -138,5 +148,6 @@ export default function ServerDetail() {
         <Link to="/landing">Back to functions</Link>
       </div>
     </div>
+    </Layout>
   );
 }
