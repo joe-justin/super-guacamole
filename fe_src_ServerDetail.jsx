@@ -1,153 +1,106 @@
-import React, { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import Plot from "react-plotly.js";
-import Layout from "./layout.jsx";
+import { useEffect, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Brush,
+  CartesianGrid,
+  Legend
+} from "recharts";
 
-export default function ServerDetail() {
-  const { serverName } = useParams();
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
+export default function ServerDetails() {
+  const { server } = useParams();
+  const navigate = useNavigate();
+  const [chartData, setChartData] = useState([]);
 
   useEffect(() => {
-    async function load() {
-      try {
-        const resp = await fetch(
-          `http://localhost:8000/api/predictions/csv/${encodeURIComponent(serverName)}`
-        );
-        if (!resp.ok) throw new Error(`CSV fetch failed (${resp.status})`);
-        const text = await resp.text();
+    fetch(`/api/server/plot/${server}`)
+      .then(res => res.text())
+      .then(csv => {
+        const lines = csv.trim().split("\n");
+        const headers = lines[0].split(",");
 
-        const rows = text.trim().split("\n");
-        if (rows.length < 2) throw new Error("CSV is empty");
-
-        const headers = rows[0].split(",").map((h) => h.trim());
-        const idxTimestamp = headers.indexOf("timestamp");
-        const idxCpuActual = headers.indexOf("cpu_actual");
-        const idxCpuPred = headers.indexOf("cpu_predicted");
-        const idxMemActual = headers.indexOf("mem_actual");
-        const idxMemPred = headers.indexOf("mem_predicted");
-
-        const parsed = rows.slice(1).map((r) => {
-          const cols = r.split(",");
-          return {
-            timestamp: cols[idxTimestamp],
-            cpu_actual: parseFloat(cols[idxCpuActual]),
-            cpu_predicted: parseFloat(cols[idxCpuPred]),
-            mem_actual: parseFloat(cols[idxMemActual]),
-            mem_predicted: parseFloat(cols[idxMemPred]),
-          };
+        const data = lines.slice(1).map(row => {
+          const values = row.split(",");
+          const obj = {};
+          headers.forEach((h, i) => {
+            obj[h] = isNaN(values[i]) ? values[i] : Number(values[i]);
+          });
+          return obj;
         });
 
-        const cleaned = parsed.map((d) => ({
-          timestamp: d.timestamp,
-          cpu_actual: isNaN(d.cpu_actual) ? null : d.cpu_actual,
-          cpu_predicted: isNaN(d.cpu_predicted) ? null : d.cpu_predicted,
-          mem_actual: isNaN(d.mem_actual) ? null : d.mem_actual,
-          mem_predicted: isNaN(d.mem_predicted) ? null : d.mem_predicted,
-          }))
-
-        const valid = cleaned.filter((d) => d.timestamp);
-        setData(valid);
-
-      } catch (e) {
-        console.error(data fetch error:", e);
-        setError(e.message);
-      }
-    }
-    load();
-  }, [serverName]);
-
-  if (error)
-    return (
-      <Layout>
-      <div style={{ padding: 20, color: "red" }}>
-        Error loading data: {error} <br />
-        <Link to="/landing">Back</Link>
-      </div>
-      </Layout>
-    );
-
-  if (!data)
-    return (
-      <Layout>
-      <div style={{ padding: 20 }}>
-        Loading data... <br />
-        <Link to="/landing">Back</Link>
-      </div>
-      </Layout>
-    );
-
-  const times = data.map((r) => r.timestamp);
-  const cpuActual = data.map((r) => r.cpu_actual);
-  const cpuPred = data.map((r) => r.cpu_predicted);
-  const memActual = data.map((r) => r.mem_actual);
-  const memPred = data.map((r) => r.mem_predicted);
-
-  if (!cpuActual.length)
-    return (
-      <Layout>
-      <div style={{ padding: 20 }}>
-        No valid data for {serverName}.
-        <div style={{ marginTop: 16 }}>
-          <Link to="/landing">Back</Link>
-        </div>
-      </div>
-      </Layout>
-    );
+        setChartData(
+          data.filter(
+            d =>
+              d.cpu_actual ||
+              d.cpu_predicted ||
+              d.mem_actual ||
+              d.mem_predicted
+          )
+        );
+      });
+  }, [server]);
 
   return (
-    <Layout>
-    <div style={{ padding: 20 }}>
-      <h2>{serverName}</h2>
-      <Plot
-        data={[
-          {
-            x: times,
-            y: cpuActual,
-            type: "scatter",
-            mode: "lines",
-            name: "CPU Actual",
-            line: { color: "blue", width: 2 },
-          },
-          {
-            x: times,
-            y: cpuPred,
-            type: "scatter",
-            mode: "lines",
-            name: "CPU Predicted",
-            line: { color: "red", dash: "dashdot", width: 2 },
-          },
-          {
-            x: times,
-            y: memActual,
-            type: "scatter",
-            mode: "lines",
-            name: "Memory Actual",
-            line: { color: "green", width: 2 },
-          },
-          {
-            x: times,
-            y: memPred,
-            type: "scatter",
-            mode: "lines",
-            name: "Memory Predicted",
-            line: { color: "orange", dash: "dashdot", width: 2 },
-          },
-        ]}
-        layout={{
-          width: 1000,
-          height: 500,
-          title: `${serverName} - CPU & Memory (Actual vs Predicted)`,
-          xaxis: { title: "Timestamp" },
-          yaxis: { title: "Utilization (%)", range: [0, 100] },
-          legend: { orientation: "h", y: -0.2 },
-          hovermode: "x unified",
-        }}
-      />
-      <div style={{ marginTop: 16 }}>
-        <Link to="/landing">Back to functions</Link>
-      </div>
+    <div style={{ padding: "30px" }}>
+      <button onClick={() => navigate(-1)}>⬅ Back</button>
+
+      <h2 style={{ marginTop: "20px" }}>
+        Server Forecast — <span style={{ color: "red" }}>{server}</span>
+      </h2>
+
+      {chartData.length === 0 ? (
+        <p style={{ color: "red" }}>No data available</p>
+      ) : (
+        <div style={{ width: "100%", height: "450px", marginTop: "30px" }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="timestamp" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+
+              <Line
+                dataKey="cpu_actual"
+                stroke="#000"
+                dot={false}
+                name="CPU Actual"
+              />
+              <Line
+                dataKey="cpu_predicted"
+                stroke="red"
+                dot={false}
+                name="CPU Predicted"
+              />
+              <Line
+                dataKey="mem_actual"
+                stroke="#555"
+                dot={false}
+                name="Memory Actual"
+              />
+              <Line
+                dataKey="mem_predicted"
+                stroke="orange"
+                dot={false}
+                name="Memory Predicted"
+              />
+
+              {/* Time-Machine Slider */}
+              <Brush
+                dataKey="timestamp"
+                height={30}
+                stroke="red"
+                startIndex={Math.max(chartData.length - 200, 0)}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
-    </Layout>
   );
 }
