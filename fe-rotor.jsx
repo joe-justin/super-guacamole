@@ -101,3 +101,57 @@ for (let i = 0; i < 40; i++) {
   ctx.fillStyle = color;
   ctx.fill();
 }
+
+///////////////////////////////////
+const gearX = width * 0.5;
+const gearY = height * 0.65;
+const gearRadius = 26;
+const teeth = 10;
+const toothDepth = 6;
+const rotation = frame * 0.05;
+
+// Draw gear teeth
+for (let t = 0; t < teeth; t++) {
+  const angle = rotation + t * (Math.PI * 2 / teeth);
+  const innerR = gearRadius;
+  const outerR = gearRadius + toothDepth;
+
+  const x1 = gearX + Math.cos(angle) * innerR;
+  const y1 = gearY + Math.sin(angle) * innerR;
+  const x2 = gearX + Math.cos(angle) * outerR;
+  const y2 = gearY + Math.sin(angle) * outerR;
+
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.strokeStyle = "rgba(0,0,0,0.7)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+// Outer gear ring
+ctx.beginPath();
+ctx.arc(gearX, gearY, gearRadius, 0, Math.PI * 2);
+ctx.strokeStyle = "rgba(0,0,0,0.6)";
+ctx.lineWidth = 2;
+ctx.stroke();
+
+// Inner hub
+ctx.beginPath();
+ctx.arc(gearX, gearY, gearRadius - 10, 0, Math.PI * 2);
+ctx.strokeStyle = "rgba(0,0,0,0.4)";
+ctx.lineWidth = 1.5;
+ctx.stroke();
+
+// Center axle
+ctx.beginPath();
+ctx.arc(gearX, gearY, 4, 0, Math.PI * 2);
+ctx.fillStyle = "rgba(0,0,0,0.8)";
+ctx.fill();
+
+// Optional glow (subtle)
+ctx.beginPath();
+ctx.arc(gearX, gearY, gearRadius + 2, 0, Math.PI * 2);
+ctx.strokeStyle = "rgba(255,0,0,0.15)";
+ctx.lineWidth = 1;
+ctx.stroke();
