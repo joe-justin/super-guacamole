@@ -1,16 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  ResponsiveContainer
-} from "recharts";
 import "./welcome.css";
 
 export default function Welcome() {
   const navigate = useNavigate();
+  const canvasRef = useRef(null);
 
   const [functions, setFunctions] = useState([]);
   const [applications, setApplications] = useState([]);
@@ -21,42 +15,79 @@ export default function Welcome() {
 
   const [metrics, setMetrics] = useState({ cpu: true, mem: false });
   const [growth, setGrowth] = useState(30);
-
-  const [rawData, setRawData] = useState([]);
   const [viewIndex, setViewIndex] = useState(60);
 
-  // Load dropdown data
   useEffect(() => {
     fetch("/api/functions").then(r => r.json()).then(d => setFunctions(d || []));
     fetch("/api/applications").then(r => r.json()).then(d => setApplications(d || []));
     fetch("/api/servers").then(r => r.json()).then(d => setServers(d || []));
   }, []);
 
-  // Generate continuous animated banner data
+  /* ===========================
+     DIGITAL HORIZON + AI GRID
+     =========================== */
   useEffect(() => {
-    let t = 0;
-    const interval = setInterval(() => {
-      setRawData(prev => {
-        const next = [...prev];
-        if (next.length > 200) next.shift();
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    let width, height, frame = 0;
 
-        next.push({
-          t,
-          v: 60 + Math.sin(t / 6) * 25 + Math.random() * 10
-        });
+    const resize = () => {
+      width = canvas.width = canvas.offsetWidth;
+      height = canvas.height = canvas.offsetHeight;
+    };
+    resize();
+    window.addEventListener("resize", resize);
 
-        t++;
-        return next;
-      });
-    }, 150);
+    const draw = () => {
+      frame++;
+      ctx.clearRect(0, 0, width, height);
 
-    return () => clearInterval(interval);
+      // Background glow
+      ctx.fillStyle = "rgba(255,255,255,0.03)";
+      ctx.fillRect(0, 0, width, height);
+
+      // Horizon line
+      ctx.beginPath();
+      ctx.moveTo(0, height * 0.65);
+      ctx.lineTo(width, height * 0.65);
+      ctx.strokeStyle = "rgba(255,0,0,0.4)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Perspective grid
+      for (let i = 0; i < 20; i++) {
+        const y = height * 0.65 + i * 8;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.strokeStyle = "rgba(255,0,0,0.05)";
+        ctx.stroke();
+      }
+
+      for (let i = -20; i <= 20; i++) {
+        ctx.beginPath();
+        ctx.moveTo(width / 2 + i * 30, height * 0.65);
+        ctx.lineTo(width / 2 + i * 150, height);
+        ctx.strokeStyle = "rgba(255,0,0,0.05)";
+        ctx.stroke();
+      }
+
+      // Neural pulses
+      for (let i = 0; i < 40; i++) {
+        const x = (i * 40 + frame * 1.5) % width;
+        const y = height * 0.65 - Math.sin((x + frame) / 40) * 40;
+        ctx.beginPath();
+        ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,0,0,0.7)";
+        ctx.fill();
+      }
+
+      requestAnimationFrame(draw);
+    };
+
+    draw();
+    return () => window.removeEventListener("resize", resize);
   }, []);
-
-  const visibleData = rawData.slice(
-    Math.max(0, rawData.length - viewIndex),
-    rawData.length
-  );
 
   const disabled = (type) => mode && mode !== type;
 
@@ -65,26 +96,23 @@ export default function Welcome() {
       alert("Please select Function, Application or Server");
       return;
     }
-
     if (mode === "function") navigate(`/functions/${selection}`);
     if (mode === "application") navigate(`/applications/${selection}`);
     if (mode === "server") navigate(`/servers/${selection}`);
   };
 
-  const getValue = (obj) => {
-    if (!obj) return "";
-    return obj.Function || obj.Application || obj.server || Object.values(obj)[0];
-  };
+  const getValue = (obj) =>
+    obj?.Function || obj?.Application || obj?.server || Object.values(obj)[0];
 
   return (
     <div className="welcome-container">
 
-      {/* ===== GLASS BANNER WITH SCRUB SLIDER ===== */}
+      {/* ===== DIGITAL HORIZON BANNER ===== */}
       <div className="glass-banner">
         <div className="banner-header">
-          <h2>Future Prediction Stream</h2>
+          <h2>Digital Horizon — AI Prediction Field</h2>
           <div className="slider-box">
-            <span>History Window</span>
+            <span>Time Focus</span>
             <input
               type="range"
               min="20"
@@ -95,22 +123,14 @@ export default function Welcome() {
           </div>
         </div>
 
-        <div style={{ height: "200px" }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={visibleData}>
-              <XAxis hide />
-              <YAxis hide />
-              <Line
-                type="monotone"
-                dataKey="v"
-                stroke="red"
-                strokeWidth={2.5}
-                dot={false}
-                isAnimationActive={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        <canvas
+          ref={canvasRef}
+          style={{
+            width: "100%",
+            height: "200px",
+            borderRadius: "12px"
+          }}
+        />
       </div>
 
       {/* ===== AI INSIGHT GLASS CARD ===== */}
@@ -132,13 +152,8 @@ export default function Welcome() {
       <div className="glass-filter-row">
 
         <Filter label="Business Stream" tooltip="Analyze by Function / Business Stream">
-          <select
-            disabled={disabled("function")}
-            onChange={e => {
-              setMode("function");
-              setSelection(e.target.value);
-            }}
-          >
+          <select disabled={disabled("function")}
+            onChange={e => { setMode("function"); setSelection(e.target.value); }}>
             <option value="">Select</option>
             {functions.map((f, i) => {
               const val = getValue(f);
@@ -148,13 +163,8 @@ export default function Welcome() {
         </Filter>
 
         <Filter label="Application" tooltip="Analyze by Application">
-          <select
-            disabled={disabled("application")}
-            onChange={e => {
-              setMode("application");
-              setSelection(e.target.value);
-            }}
-          >
+          <select disabled={disabled("application")}
+            onChange={e => { setMode("application"); setSelection(e.target.value); }}>
             <option value="">Select</option>
             {applications.map((a, i) => {
               const val = getValue(a);
@@ -164,13 +174,8 @@ export default function Welcome() {
         </Filter>
 
         <Filter label="Hostname" tooltip="Analyze by Server / Hostname">
-          <select
-            disabled={disabled("server")}
-            onChange={e => {
-              setMode("server");
-              setSelection(e.target.value);
-            }}
-          >
+          <select disabled={disabled("server")}
+            onChange={e => { setMode("server"); setSelection(e.target.value); }}>
             <option value="">Select</option>
             {servers.map((s, i) => {
               const val = getValue(s);
@@ -182,18 +187,12 @@ export default function Welcome() {
         <Filter label="Metrics" tooltip="Select metrics to forecast">
           <div className="checkbox-group">
             <label>
-              <input
-                type="checkbox"
-                checked={metrics.cpu}
-                onChange={() => setMetrics(m => ({ ...m, cpu: !m.cpu }))}
-              /> CPU
+              <input type="checkbox" checked={metrics.cpu}
+                onChange={() => setMetrics(m => ({ ...m, cpu: !m.cpu }))} /> CPU
             </label>
             <label style={{ marginLeft: "10px" }}>
-              <input
-                type="checkbox"
-                checked={metrics.mem}
-                onChange={() => setMetrics(m => ({ ...m, mem: !m.mem }))}
-              /> Memory
+              <input type="checkbox" checked={metrics.mem}
+                onChange={() => setMetrics(m => ({ ...m, mem: !m.mem }))} /> Memory
             </label>
           </div>
         </Filter>
@@ -207,9 +206,7 @@ export default function Welcome() {
         </Filter>
 
         <div className="filter-submit">
-          <button className="submit-btn" onClick={submit}>
-            Forecast →
-          </button>
+          <button className="submit-btn" onClick={submit}>Forecast →</button>
         </div>
       </div>
     </div>
