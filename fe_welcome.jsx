@@ -39,51 +39,70 @@ export default function Welcome() {
     window.addEventListener("resize", resize);
 
     const draw = () => {
-      frame++;
-      ctx.clearRect(0, 0, width, height);
+const draw = () => {
+  frame++;
+  ctx.clearRect(0, 0, width, height);
 
-      // Background glow
-      ctx.fillStyle = "rgba(255,255,255,0.03)";
-      ctx.fillRect(0, 0, width, height);
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, height);
+  bg.addColorStop(0, "#ffffff");
+  bg.addColorStop(1, "#f7f7f7");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, width, height);
 
-      // Horizon line
-      ctx.beginPath();
-      ctx.moveTo(0, height * 0.65);
-      ctx.lineTo(width, height * 0.65);
-      ctx.strokeStyle = "rgba(255,0,0,0.4)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
+  const horizonY = height * 0.6;
 
-      // Perspective grid
-      for (let i = 0; i < 20; i++) {
-        const y = height * 0.65 + i * 8;
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.strokeStyle = "rgba(255,0,0,0.05)";
-        ctx.stroke();
-      }
+  // Horizon glow
+  const glow = ctx.createRadialGradient(width/2, horizonY, 20, width/2, horizonY, 300);
+  glow.addColorStop(0, "rgba(255,0,0,0.25)");
+  glow.addColorStop(1, "rgba(255,0,0,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, width, height);
 
-      for (let i = -20; i <= 20; i++) {
-        ctx.beginPath();
-        ctx.moveTo(width / 2 + i * 30, height * 0.65);
-        ctx.lineTo(width / 2 + i * 150, height);
-        ctx.strokeStyle = "rgba(255,0,0,0.05)";
-        ctx.stroke();
-      }
+  // Perspective grid: horizontal lines
+  for (let i = 0; i < 30; i++) {
+    const depth = i / 30;
+    const y = horizonY + depth * (height - horizonY);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.strokeStyle = `rgba(255,0,0,${0.15 - depth * 0.12})`;
+    ctx.stroke();
+  }
 
-      // Neural pulses
-      for (let i = 0; i < 40; i++) {
-        const x = (i * 40 + frame * 1.5) % width;
-        const y = height * 0.65 - Math.sin((x + frame) / 40) * 40;
-        ctx.beginPath();
-        ctx.arc(x, y, 2.2, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255,0,0,0.7)";
-        ctx.fill();
-      }
+  // Perspective grid: vertical converging lines
+  for (let i = -20; i <= 20; i++) {
+    ctx.beginPath();
+    ctx.moveTo(width / 2 + i * 25, horizonY);
+    ctx.lineTo(width / 2 + i * 140, height);
+    ctx.strokeStyle = "rgba(255,0,0,0.08)";
+    ctx.stroke();
+  }
 
-      requestAnimationFrame(draw);
-    };
+  // Animated scanlines (time flow)
+  for (let i = 0; i < 8; i++) {
+    const y = (frame * 4 + i * 80) % height;
+    ctx.strokeStyle = "rgba(255,0,0,0.03)";
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+
+  // Neural pulses flowing toward horizon
+  for (let i = 0; i < 50; i++) {
+    const x = (i * 50 + frame * 2) % width;
+    const wave = Math.sin((x + frame) / 50) * 30;
+    const y = horizonY - 20 + wave;
+
+    ctx.beginPath();
+    ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(255,0,0,0.7)";
+    ctx.fill();
+  }
+
+  requestAnimationFrame(draw);
+};
 
     draw();
     return () => window.removeEventListener("resize", resize);
