@@ -18,47 +18,88 @@ function Card({ title, color, subtitle, onClick }) {
   )
 }
 
-export default function Applications(){
-  const { functionName } = useParams()
+export default function Applications() {
+  const { functionName, applicationName } = useParams()
   const [apps, setApps] = useState([])
   const nav = useNavigate()
-  useEffect(()=>{
-    async function load(){
+
+  useEffect(() => {
+    async function load() {
       try {
-        const resp = await fetch('http://localhost:8000/api/applications')
-        const json = await resp.json()
-        const filtered = json.filter(a => a.Functions ? false : true) // keep all, we'll filter servers later
-        // apps JSON has Application key; we need to filter by function via servers endpoint
-        // Instead fetch servers and reduce by application where Function == functionName
         const srvResp = await fetch('http://localhost:8000/api/servers')
         const servers = await srvResp.json()
+
+        let derivedFunction = functionName
+
+        // 🔍 If application is selected, derive its Function
+        if (applicationName) {
+          const found = servers.find(
+            s => s.Application.toLowerCase() === applicationName.toLowerCase()
+          )
+          if (found) derivedFunction = found.Function
+        }
+
+        // 📊 Build application map
         const appsMap = {}
         servers.forEach(s => {
-          if (s.Function === functionName) {
+          if (!derivedFunction || s.Function === derivedFunction) {
             const app = s.Application
-            if (!appsMap[app]) appsMap[app] = { total:0, healthy:0 }
+            if (!appsMap[app]) appsMap[app] = { total: 0, healthy: 0 }
             appsMap[app].total += 1
             if (s.status === 'healthy') appsMap[app].healthy += 1
           }
         })
-        const mapped = Object.entries(appsMap).map(([app, v]) => {
+
+        let mapped = Object.entries(appsMap).map(([app, v]) => {
           const healthy_pct = Math.round((v.healthy / v.total) * 100)
-          const color = healthy_pct >=95 ? 'green' : (healthy_pct >=90 ? 'amber' : 'red')
-          return { title: app, color, subtitle: `${healthy_pct}% healthy (${v.total})`}
+          const color = healthy_pct >= 95 ? 'green' : (healthy_pct >= 90 ? 'amber' : 'red')
+          return { title: app, color, subtitle: `${healthy_pct}% healthy (${v.total})` }
         })
+
+        // 🎯 If specific application selected → show only that
+        if (applicationName) {
+          mapped = mapped.filter(a =>
+            a.title.toLowerCase() === applicationName.toLowerCase()
+          )
+        }
+
         setApps(mapped)
-      } catch(e){ setApps([]) }
+      } catch (e) {
+        console.error("Applications load failed", e)
+        setApps([])
+      }
     }
+
     load()
-  },[functionName])
+  }, [functionName, applicationName])
+
   return (
-    <Layout></Layout>
-    <div style={{padding:20}}>
-      <h2>Applications for {functionName}</h2>
-      <div className="cards-grid">
-        {apps.map(a => <Card key={a.title} {...a} onClick={() => nav(`/servers/${encodeURIComponent(a.title)}`)} />)}
+    <Layout>
+      <div style={{ padding: 20 }}>
+        <h2>
+          {applicationName
+            ? `Application: ${applicationName}`
+            : functionName
+              ? `Applications for ${functionName}`
+              : "Applications"}
+        </h2>
+
+        <div className="cards-grid">
+          {apps.map(a => (
+            <Card
+              key={a.title}
+              {...a}
+              onClick={() => nav(`/servers/${encodeURIComponent(a.title)}`)}
+            />
+          ))}
+        </div>
+
+        {applicationName && apps.length === 0 && (
+          <div style={{ marginTop: 20, color: "gray" }}>
+            No data found for application: {applicationName}
+          </div>
+        )}
       </div>
-    </div>
     </Layout>
   )
 }
