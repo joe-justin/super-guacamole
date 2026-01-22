@@ -18,6 +18,7 @@ export default function ServerDetails() {
   const [chartData, setChartData] = useState([]);
 
   useEffect(() => {
+    
     fetch(`/api/server/plot/${server}`)
       .then(res => res.text())
       .then(csv => {
@@ -31,6 +32,7 @@ export default function ServerDetails() {
             obj[h] = isNaN(values[i]) ? values[i] : Number(values[i]);
           });
           return obj;
+          
         });
 
         setChartData(
@@ -53,6 +55,9 @@ export default function ServerDetails() {
         Server Forecast — <span style={{ color: "red" }}>{server}</span>
       </h2>
 
+
+
+      
       {chartData.length === 0 ? (
         <p style={{ color: "red" }}>No data available</p>
       ) : (
