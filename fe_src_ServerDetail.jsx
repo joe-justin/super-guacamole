@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   LineChart,
   Line,
@@ -12,14 +12,70 @@ import {
   Legend
 } from "recharts";
 
+/* ===== Simple Server Card (for multi-server view) ===== */
+function ServerCard({ name, onClick }) {
+  return (
+    <div
+      className="flip-card red"
+      onClick={onClick}
+      style={{ cursor: "pointer" }}
+    >
+      <div className="flip-inner">
+        <div className="flip-front">
+          <div className="card-title">{name}</div>
+          <div className="card-sub">View Forecast</div>
+        </div>
+        <div className="flip-back">
+          <div className="explore">Open</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ServerDetails() {
   const { server } = useParams();
   const navigate = useNavigate();
-  const [chartData, setChartData] = useState([]);
+  const location = useLocation();
 
+  const [chartData, setChartData] = useState([]);
+  const [activeServer, setActiveServer] = useState(null);
+  const [servers, setServers] = useState([]);
+  const [growth, setGrowth] = useState(null);
+
+  /* ===============================
+     Parse incoming state or query
+     =============================== */
   useEffect(() => {
-    
-    fetch(`/api/server/plot/${server}`)
+    // Expecting from Welcome.jsx navigation:
+    // navigate("/servers", { state: { servers: [...], growth: 30 } })
+
+    if (location.state?.servers?.length) {
+      setServers(location.state.servers);
+      setGrowth(location.state.growth || null);
+
+      if (location.state.servers.length === 1) {
+        setActiveServer(location.state.servers[0]);
+      }
+    } else if (server) {
+      // legacy single-server route
+      setActiveServer(server);
+      setServers([server]);
+    }
+  }, [location.state, server]);
+
+  /* ===============================
+     Load CSV when server selected
+     =============================== */
+  useEffect(() => {
+    if (!activeServer) return;
+
+    const suffix = growth ? `${activeServer}_${growth}` : activeServer;
+    const endpoint = growth
+      ? `/api/predictions/csv/${suffix}`
+      : `/api/server/plot/${activeServer}`;
+
+    fetch(endpoint)
       .then(res => res.text())
       .then(csv => {
         const lines = csv.trim().split("\n");
@@ -32,7 +88,6 @@ export default function ServerDetails() {
             obj[h] = isNaN(values[i]) ? values[i] : Number(values[i]);
           });
           return obj;
-          
         });
 
         setChartData(
@@ -44,20 +99,54 @@ export default function ServerDetails() {
               d.mem_predicted
           )
         );
+      })
+      .catch(err => {
+        console.error("Failed to load server CSV", err);
+        setChartData([]);
       });
-  }, [server]);
+  }, [activeServer, growth]);
 
+  /* ===============================
+     MULTI-SERVER GRID VIEW
+     =============================== */
+  if (servers.length > 1 && !activeServer) {
+    return (
+      <div style={{ padding: "30px" }}>
+        <button onClick={() => navigate(-1)}>⬅ Back</button>
+        <h2 style={{ marginTop: "20px" }}>
+          Select a Server to View Forecast
+        </h2>
+
+        <div className="cards-grid" style={{ marginTop: 30 }}>
+          {servers.map(s => (
+            <ServerCard
+              key={s}
+              name={s}
+              onClick={() => setActiveServer(s)}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  /* ===============================
+     SINGLE SERVER CHART VIEW
+     =============================== */
   return (
     <div style={{ padding: "30px" }}>
       <button onClick={() => navigate(-1)}>⬅ Back</button>
 
       <h2 style={{ marginTop: "20px" }}>
-        Server Forecast — <span style={{ color: "red" }}>{server}</span>
+        Server Forecast —{" "}
+        <span style={{ color: "red" }}>{activeServer}</span>
+        {growth && (
+          <span style={{ marginLeft: 10, fontSize: 14, color: "#555" }}>
+            (Growth: {growth}%)
+          </span>
+        )}
       </h2>
 
-
-
-      
       {chartData.length === 0 ? (
         <p style={{ color: "red" }}>No data available</p>
       ) : (
@@ -95,7 +184,6 @@ export default function ServerDetails() {
                 name="Memory Predicted"
               />
 
-              {/* Time-Machine Slider */}
               <Brush
                 dataKey="timestamp"
                 height={30}
