@@ -1,0 +1,72 @@
+(
+(
+ 100 -
+ (
+  avg by(server)(
+   rate(node_cpu_seconds_total{mode="idle"}[5m])
+  ) * 100
+ )
+)
+-
+avg_over_time(
+(
+ 100 -
+ (
+  avg by(server)(
+   rate(node_cpu_seconds_total{mode="idle"}[5m])
+  ) * 100
+ )
+)[90d:]
+)
+)
+/
+stddev_over_time(
+(
+ 100 -
+ (
+  avg by(server)(
+   rate(node_cpu_seconds_total{mode="idle"}[5m])
+  ) * 100
+ )
+)[90d:]
+)
+
+#############################
+
+(
+(
+(
+ 1 -
+ (
+  node_memory_MemAvailable_bytes
+  /
+  node_memory_MemTotal_bytes
+ )
+) * 100
+)
+-
+avg_over_time(
+(
+ 1 -
+ (
+  node_memory_MemAvailable_bytes
+  /
+  node_memory_MemTotal_bytes
+ )
+) * 100
+[90d:]
+)
+)
+/
+stddev_over_time(
+(
+ 1 -
+ (
+  node_memory_MemAvailable_bytes
+  /
+  node_memory_MemTotal_bytes
+ )
+) * 100
+[90d:]
+)
+)
